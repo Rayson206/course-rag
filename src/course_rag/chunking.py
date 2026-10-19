@@ -47,27 +47,50 @@ def split_by_sentence(text: str) -> list[str]:
     return sentences
 
 
+def _pack_sentences(sentences: list[str], max_len: int) -> list[str]:
+    """把句子贪心打包成不超过 max_len 字的块，单句超长时硬切。"""
+    blocks: list[str] = []
+    cur = ""
+    for sent in sentences:
+        while len(sent) > max_len:
+            if cur:
+                blocks.append(cur)
+                cur = ""
+            blocks.append(sent[:max_len])
+            sent = sent[max_len:]
+        if len(cur) + len(sent) <= max_len:
+            cur += sent
+        else:
+            blocks.append(cur)
+            cur = sent
+    if cur:
+        blocks.append(cur)
+    return blocks
+
+
 def chunk_text(text: str, max_len: int = CHUNK_SIZE) -> list[dict]:
-    """完整切块流程：先按章节，再按句子打包，每块携带所属章节标题。"""
+    """TXT 讲义切块：先按章节，再按句子打包，每块携带章节标题。"""
     chunks: list[dict] = []
     for heading, body in split_by_heading(text):
-        cur = ""
-        for sent in split_by_sentence(body):
-            # 单句本身超长时，硬切
-            while len(sent) > max_len:
-                if cur:
-                    chunks.append({"heading": heading, "text": cur})
-                    cur = ""
-                chunks.append({"heading": heading, "text": sent[:max_len]})
-                sent = sent[max_len:]
-            if len(cur) + len(sent) <= max_len:
-                cur += sent
-            else:
-                chunks.append({"heading": heading, "text": cur})
-                cur = sent
-        if cur:
-            chunks.append({"heading": heading, "text": cur})
+        for block in _pack_sentences(split_by_sentence(body), max_len):
+            chunks.append({"heading": heading, "text": block})
+    for i, c in enumerate(chunks):
+        c["index"] = i
+    return chunks
 
+
+def chunk_pages(pages: list[dict], max_len: int = CHUNK_SIZE) -> list[dict]:
+    """PDF 切块：parse_pdf 的每页文本切块，每块携带来源文件名与页码。"""
+    chunks: list[dict] = []
+    for page in pages:
+        for block in _pack_sentences(split_by_sentence(page["text"]), max_len):
+            chunks.append(
+                {
+                    "text": block,
+                    "source": page["source"],
+                    "page": page["page"],
+                }
+            )
     for i, c in enumerate(chunks):
         c["index"] = i
     return chunks
