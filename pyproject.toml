@@ -1,0 +1,24 @@
+[project]
+name = "course-rag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Rayson", email = "1695935372@qq.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "openai>=3.35.1",
+    "python-dotenv>=1.2.4",
+]
+
+[project.scripts]
+course-rag = "course_rag:main"
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
