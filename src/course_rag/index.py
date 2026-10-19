@@ -60,7 +60,15 @@ def build_index() -> None:
 
     # 4. 写入 ChromaDB（持久化到磁盘，关机也不丢）
     db = chromadb.PersistentClient(path=str(DB_PATH))
-    collection = db.get_or_create_collection(name="lecture")
+    # 索引脚本每次重建：检索配置一旦变更，必须重建索引
+    try:
+        db.delete_collection("lecture")
+    except Exception:
+        pass
+    # 指定余弦距离：距离 = 1 - 余弦相似度，0 表示完全相同，越小越相关
+    collection = db.get_or_create_collection(
+        name="lecture", metadata={"hnsw:space": "cosine"}
+    )
     collection.upsert(  # upsert：重复运行时按 id 覆盖，不会报错
         ids=[f"chunk-{c['index']}" for c in chunks],
         documents=[c["text"] for c in chunks],
