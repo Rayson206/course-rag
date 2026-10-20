@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import chromadb
+import httpx
 import jieba
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -18,11 +19,15 @@ load_dotenv()
 
 LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 EMBED_MODEL = "BAAI/bge-large-zh-v1.5"
+RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
+BASE_URL = "https://api.siliconflow.cn/v1"
 TOP_K = 5
 CANDIDATE_K = 10  # 每路检索先粗召回这么多块，再融合排序
 RRF_K = 60        # Reciprocal Rank Fusion 常数，越大越弱化头部排名差异
 # 拒答阈值（余弦距离，越小越相关）：强相关约 0.26-0.54、完全无关 > 0.57
 REJECT_THRESHOLD = 0.55
+# Rerank 拒答阈值（relevance_score，越大越相关）：实测讲义内 > 0.75、讲义外 < 0.001
+RERANK_REJECT = 0.1
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = PROJECT_ROOT / "chroma_db"
@@ -34,7 +39,7 @@ class RAGEngine:
     def __init__(self, db_path: Path = DB_PATH, collection_name: str = "course_docs"):
         self._client = OpenAI(
             api_key=os.getenv("SILICONFLOW_API_KEY"),
-            base_url="https://api.siliconflow.cn/v1",
+            base_url=BASE_URL,
         )
         self._db = chromadb.PersistentClient(path=str(db_path))
         self.collection = self._db.get_or_create_collection(
@@ -138,11 +143,45 @@ class RAGEngine:
         ranked = sorted(fused.values(), key=lambda x: x["rrf"], reverse=True)
         return ranked[:top_k]
 
+    def rerank(self, question: str, candidates: list[dict]) -> list[dict]:
+        """Cross-Encoder 精排：把问题与每个候选块直接配对打分，比向量相似度更准。"""
+        resp = httpx.post(
+            f"{BASE_URL}/rerank",
+            headers={"Authorization": f"Bearer {os.getenv('SILICONFLOW_API_KEY')}"},
+            json={
+                "model": RERANK_MODEL,
+                "query": question,
+                "documents": [c["text"] for c in candidates],
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+        results = resp.json()["results"]
+        ranked = []
+        for item in sorted(results, key=lambda x: x["relevance_score"], reverse=True):
+            ranked.append({**candidates[item["index"]],
+                           "rerank_score": item["relevance_score"]})
+        return ranked
+
+    def search(self, question: str, top_k: int = TOP_K) -> list[dict]:
+        """完整检索管道：混合召回 → Rerank 精排。"""
+        candidates = self.hybrid_retrieve(question, CANDIDATE_K)
+        return self.rerank(question, candidates)[:top_k]
+
     @staticmethod
     def best_distance(hits: list[dict]) -> float:
         """候选块中最小的向量距离（用于拒答判定），无向量分则视为不相关。"""
         distances = [h["distance"] for h in hits if h.get("distance") is not None]
         return min(distances) if distances else 1.0
+
+    def should_reject(self, hits: list[dict]) -> bool:
+        """统一拒答判定：有 Rerank 分用 Rerank 阈值，否则退回向量距离阈值。"""
+        if not hits:
+            return True
+        top = hits[0]
+        if top.get("rerank_score") is not None:
+            return top["rerank_score"] < RERANK_REJECT
+        return self.best_distance(hits) > REJECT_THRESHOLD
 
     # ---------------- 生成 ----------------
 
@@ -179,17 +218,17 @@ class RAGEngine:
                 yield event.choices[0].delta.content
 
     def answer_stream(self, question: str, history: list[dict] | None = None):
-        """混合检索 + 阈值 + 生成，一步到位的流式接口。"""
-        hits = self.hybrid_retrieve(question)
-        if self.best_distance(hits) > REJECT_THRESHOLD:
+        """完整管道：混合召回 + Rerank 精排 + 阈值 + 流式生成。"""
+        hits = self.search(question)
+        if self.should_reject(hits):
             yield NO_ANSWER
             return
         yield from self.generate_stream(question, hits, history)
 
     def answer(self, question: str) -> tuple[str, list[dict]]:
         """非流式：一次性返回完整答案和来源（命令行用）。"""
-        hits = self.hybrid_retrieve(question)
-        if self.best_distance(hits) > REJECT_THRESHOLD:
+        hits = self.search(question)
+        if self.should_reject(hits):
             return "📚 讲义中没有相关内容。", hits
         resp = self._client.chat.completions.create(
             model=LLM_MODEL,

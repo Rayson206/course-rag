@@ -6,7 +6,7 @@ M2 第3步：Gradio 网页问答应用
 import gradio as gr
 
 from course_rag.document_parser import PDF_PATH
-from course_rag.rag_engine import REJECT_THRESHOLD, RAGEngine
+from course_rag.rag_engine import RAGEngine
 
 engine = RAGEngine()
 
@@ -38,9 +38,9 @@ def respond(history: list[dict]):
     """history 为 messages 格式，最后一条是用户本轮提问。"""
     question = history[-1]["content"]
     prior = history[:-1][-6:]  # 最多携带最近 3 轮上下文
-    hits = engine.hybrid_retrieve(question)
+    hits = engine.search(question)
 
-    if engine.best_distance(hits) > REJECT_THRESHOLD:
+    if engine.should_reject(hits):
         yield history + [{"role": "assistant", "content": NO_ANSWER}]
         return
 

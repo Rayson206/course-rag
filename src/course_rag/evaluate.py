@@ -10,7 +10,7 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
-from course_rag.rag_engine import REJECT_THRESHOLD, RAGEngine
+from course_rag.rag_engine import REJECT_THRESHOLD, RERANK_REJECT, RAGEngine
 
 EVAL_PATH = Path(__file__).resolve().parents[2] / "evals" / "questions.jsonl"
 
@@ -49,10 +49,17 @@ def evaluate(name: str, retrieve_fn: Retriever,
 
     for q in unanswerable:
         hits = retrieve_fn(q["question"], 5)
-        # 拒答判定基于候选块中最小的向量距离（混合检索排序后 hits[0] 不一定是向量最近）
-        best_dist = min((h["distance"] for h in hits
-                         if h.get("distance") is not None), default=1.0)
-        if best_dist > reject_threshold:
+        if not hits:
+            reject_hit += 1
+            continue
+        # 有 Rerank 分时用 Rerank 置信度判定；否则退回向量距离阈值
+        if hits[0].get("rerank_score") is not None:
+            rejected = hits[0]["rerank_score"] < RERANK_REJECT
+        else:
+            best_dist = min((h["distance"] for h in hits
+                             if h.get("distance") is not None), default=1.0)
+            rejected = best_dist > reject_threshold
+        if rejected:
             reject_hit += 1
 
     n_ans, n_un = len(answerable), len(unanswerable)
@@ -79,5 +86,7 @@ if __name__ == "__main__":
     engine = RAGEngine()
     baseline = evaluate("纯向量检索（基线）", engine.retrieve)
     hybrid = evaluate("混合检索（向量 + BM25，RRF 融合）", engine.hybrid_retrieve)
+    reranked = evaluate("混合检索 + Rerank 精排", engine.search)
     print("===== 优化对比（综合正确率）=====")
-    print(f"基线  {baseline['overall']:.1%}  →  混合 {hybrid['overall']:.1%}")
+    print(f"基线 {baseline['overall']:.1%}  →  混合 {hybrid['overall']:.1%}"
+          f"  →  Rerank {reranked['overall']:.1%}")
