@@ -49,7 +49,10 @@ def evaluate(name: str, retrieve_fn: Retriever,
 
     for q in unanswerable:
         hits = retrieve_fn(q["question"], 5)
-        if hits[0]["distance"] > reject_threshold:
+        # 拒答判定基于候选块中最小的向量距离（混合检索排序后 hits[0] 不一定是向量最近）
+        best_dist = min((h["distance"] for h in hits
+                         if h.get("distance") is not None), default=1.0)
+        if best_dist > reject_threshold:
             reject_hit += 1
 
     n_ans, n_un = len(answerable), len(unanswerable)
@@ -74,4 +77,7 @@ def evaluate(name: str, retrieve_fn: Retriever,
 
 if __name__ == "__main__":
     engine = RAGEngine()
-    evaluate("纯向量检索（基线）", engine.retrieve)
+    baseline = evaluate("纯向量检索（基线）", engine.retrieve)
+    hybrid = evaluate("混合检索（向量 + BM25，RRF 融合）", engine.hybrid_retrieve)
+    print("===== 优化对比（综合正确率）=====")
+    print(f"基线  {baseline['overall']:.1%}  →  混合 {hybrid['overall']:.1%}")

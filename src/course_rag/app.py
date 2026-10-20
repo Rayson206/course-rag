@@ -38,9 +38,9 @@ def respond(history: list[dict]):
     """history 为 messages 格式，最后一条是用户本轮提问。"""
     question = history[-1]["content"]
     prior = history[:-1][-6:]  # 最多携带最近 3 轮上下文
-    hits = engine.retrieve(question)
+    hits = engine.hybrid_retrieve(question)
 
-    if hits[0]["distance"] > REJECT_THRESHOLD:
+    if engine.best_distance(hits) > REJECT_THRESHOLD:
         yield history + [{"role": "assistant", "content": NO_ANSWER}]
         return
 
