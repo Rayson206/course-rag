@@ -17,6 +17,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # 2) 拷源码并安装项目本身
 COPY src ./src
+COPY README.md ./
 RUN uv sync --frozen --no-dev
 
 # 3) 内置示例讲义（容器首次启动、索引库为空时会自动建索引）
