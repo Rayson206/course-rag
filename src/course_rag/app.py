@@ -1,8 +1,10 @@
 """
 M2 第3步：Gradio 网页问答应用
 运行：uv run python -m course_rag.app
-启动后浏览器自动打开 http://127.0.0.1:7860
+启动后访问 http://127.0.0.1:7860
 """
+import os
+
 import gradio as gr
 
 from course_rag.document_parser import PDF_PATH
@@ -26,12 +28,17 @@ def upload_pdf(pdf_path: str) -> str:
 
 
 def format_sources(hits: list[dict]) -> str:
-    """把命中的来源整理成答案下方的引用标注。"""
-    lines = [
-        f"{i}. {h['source']} 第 {h['page']} 页（相关度距离 {h['distance']:.2f}）"
-        for i, h in enumerate(hits, 1)
-    ]
-    return "\n\n---\n📖 **参考来源**（距离越小越相关）：\n" + "\n".join(lines)
+    """把命中的来源整理成答案下方的引用标注（优先显示 Rerank 相关度）。"""
+    lines = []
+    for i, h in enumerate(hits, 1):
+        if h.get("rerank_score") is not None:
+            score = f"相关度 {h['rerank_score']:.2f}"
+        elif h.get("distance") is not None:
+            score = f"向量距离 {h['distance']:.2f}"
+        else:
+            score = ""
+        lines.append(f"{i}. {h['source']} 第 {h['page']} 页（{score}）")
+    return "\n\n---\n📖 **参考来源**（相关度越高越匹配）：\n" + "\n".join(lines)
 
 
 def respond(history: list[dict]):
@@ -92,4 +99,9 @@ with gr.Blocks(title="课程讲义问答助手") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(inbrowser=True)
+    # 监听 0.0.0.0 与 PORT 环境变量：本地默认 7860，HF Space 等云平台会注入 PORT
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=int(os.environ.get("PORT", "7860")),
+        inbrowser=False,
+    )
