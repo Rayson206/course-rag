@@ -24,5 +24,5 @@ uv run python -m course_rag.hello_llm
 
 - [x] **M0 环境搭建**：项目骨架、依赖管理、密钥规范、大模型首次对话
 - [ ] **M1 最小闭环**：文档切块、向量化、ChromaDB 检索、命令行问答
-- [ ] **M2 产品化**：PDF/PPT 解析、Gradio 网页、流式输出、来源标注
+- [x] **M2 产品化**：PDF/PPT 解析、Gradio 网页、流式输出、来源标注、阈值拒答
 - [ ] **M3 简历亮点**：BM25+向量混合检索、Rerank、评测集、Docker 部署

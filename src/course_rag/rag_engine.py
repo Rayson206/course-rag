@@ -17,8 +17,10 @@ load_dotenv()
 LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 EMBED_MODEL = "BAAI/bge-large-zh-v1.5"
 TOP_K = 5
-# 拒答阈值：M1 实测讲义内问题 Top1 距离约 0.33-0.41，讲义外 > 0.56，取中间值
-REJECT_THRESHOLD = 0.45
+# 拒答阈值（余弦距离，越小越相关）：
+# 实测强相关 0.26-0.54、完全无关 > 0.57，灰色地带（0.52-0.55）交给 Prompt 约束让 LLM 自行拒答；
+# 精细阈值将在 M3 用评测集标定
+REJECT_THRESHOLD = 0.55
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = PROJECT_ROOT / "chroma_db"
@@ -94,13 +96,9 @@ class RAGEngine:
 {question}
 """
 
-    def answer_stream(self, question: str, history: list[dict] | None = None):
-        """流式生成答案，逐字 yield（网页打字机效果用）。"""
-        hits = self.retrieve(question)
-        if hits[0]["distance"] > REJECT_THRESHOLD:
-            yield "📚 讲义中没有找到与这个问题相关的内容，换个关键词试试，或确认该内容是否在你上传的资料里。"
-            return
-
+    def generate_stream(self, question: str, hits: list[dict],
+                        history: list[dict] | None = None):
+        """基于已检索的 hits 流式生成答案（网页打字机效果用）。"""
         messages = list(history or [])
         messages.append({"role": "user", "content": self._build_prompt(question, hits)})
         stream = self._client.chat.completions.create(
@@ -109,6 +107,14 @@ class RAGEngine:
         for event in stream:
             if event.choices and event.choices[0].delta.content:
                 yield event.choices[0].delta.content
+
+    def answer_stream(self, question: str, history: list[dict] | None = None):
+        """检索 + 阈值 + 生成，一步到位的流式接口（逐字 yield）。"""
+        hits = self.retrieve(question)
+        if hits[0]["distance"] > REJECT_THRESHOLD:
+            yield "📚 讲义中没有找到与这个问题相关的内容，换个关键词试试，或确认该内容是否在你上传的资料里。"
+            return
+        yield from self.generate_stream(question, hits, history)
 
     def answer(self, question: str) -> tuple[str, list[dict]]:
         """非流式：一次性返回完整答案和来源（命令行用）。"""

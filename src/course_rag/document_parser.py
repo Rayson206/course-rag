@@ -14,7 +14,9 @@ def parse_pdf(path: str | Path) -> list[dict]:
     pages: list[dict] = []
     with pdfplumber.open(path) as pdf:
         for page_no, page in enumerate(pdf.pages, start=1):
-            text = page.extract_text() or ""
+            # PDF 物理换行是排版造成的，不是段落分隔；直接拼接，避免句子被切碎
+            raw = page.extract_text() or ""
+            text = "".join(line.strip() for line in raw.splitlines())
 
             # 表格提取：pdfplumber 能识别线条分隔的表格，转成「单元格 | 单元格」文本
             for table in page.extract_tables() or []:
