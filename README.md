@@ -13,7 +13,13 @@
 
 ## 在线演示
 
-> 待部署（M3.5）：部署后补充公网访问链接。
+🚀 **公网地址：<https://course-rag.onrender.com>**
+
+> 部署在 **Render 免费版**（美国节点，Docker 容器化），代码即本仓库 `master` 分支。
+>
+> - 免费实例闲置约 15 分钟会自动休眠，**首次打开需等待约 50 秒冷启动**（页面加载慢属正常现象，稍等即可）。
+> - 可直接验证两类能力：讲义内问题（如「死锁的四个必要条件是什么？」）会回答并标注来源页码；讲义外问题（如「宫保鸡丁怎么做？」）会明确拒答。
+> - 部署专用 `Dockerfile.cloud`，构建细节见文末「公网部署说明（Render）」。
 
 ---
 
@@ -188,4 +194,23 @@ course-rag/
   - [x] BM25 + 向量混合检索、RRF 融合（82.9%）
   - [x] Rerank 重排序精排（100%）
   - [x] FastAPI 服务化 + Docker 容器化
-  - [ ] 公网部署
+  - [x] 公网部署（Render 免费版 + 专用 Dockerfile.cloud，公网可访问、讲义内问答与讲义外拒答均验证通过）
+
+---
+
+## 公网部署说明（Render）
+
+本仓库提供两套 Dockerfile，区分本地与云端：
+
+| 文件 | 用途 | 关键点 |
+| --- | --- | --- |
+| `Dockerfile` / `Dockerfile.cn` | 本地容器 | 暴露 8000 端口跑 FastAPI；`.cn` 版基础镜像走国内代理 |
+| `Dockerfile.cloud` | 云平台（Render 等） | 暴露平台注入的 `$PORT`、启动 Gradio 网页、官方源构建 |
+
+**Render 部署要点（免费版 Web Service）：**
+
+1. 代码推到 GitHub（Render 的 Public Git URL 仅支持 GitHub / GitLab / Bitbucket），新建 **Web Service → Docker**，Dockerfile Path 填 `Dockerfile.cloud`，Region 任选（本项目用美国 Ohio）。
+2. 在 **Environment** 配置 Secret：`SILICONFLOW_API_KEY=<你的硅基流动密钥>`，密钥不打进镜像。
+3. **海外节点的 API 端点坑**：代码默认 `SILICONFLOW_BASE_URL=https://api-st.siliconflow.cn/v1`（硅基流动官方「海外加速端点」，与国内站 `api.siliconflow.cn` 用同一把中国区 key）。注意国际站 `api.siliconflow.com` 是**独立账号体系**，中国区 key 无法使用；如需覆盖可在环境变量里显式设置 `SILICONFLOW_BASE_URL`。
+4. 免费实例 0.1 CPU / 512 MB，闲置约 15 分钟休眠、冷启动约 50 秒；启动时会自动从内置 `data/lecture.pdf` 重建索引（约 10 秒）。
+5. Render 用 Public Git URL 接入时**不会随 push 自动部署**，每次更新代码后需在控制台 **Manual Deploy → Deploy latest commit**。
