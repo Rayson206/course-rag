@@ -20,9 +20,11 @@ load_dotenv()
 LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 EMBED_MODEL = "BAAI/bge-large-zh-v1.5"
 RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
-# 国内默认走 .cn；海外部署（如 Render 美国节点）用环境变量 SILICONFLOW_BASE_URL
-# 指向国际域名 https://api.siliconflow.com/v1，海外直连 .cn 会被网关判为参数无效。
-BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
+# 默认用官方海外加速端点 api-st.siliconflow.cn（同一把中国区 key，国内外均可用），
+# 避免 Render 等海外节点直连 api.siliconflow.cn 偶发 400(20015 参数无效)。
+# 国内本地若想更快，可在 .env 设 SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1。
+# 注意：api.siliconflow.com 是国际站独立账号体系，中国区 key 会 401，切勿混用。
+BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api-st.siliconflow.cn/v1")
 TOP_K = 5
 CANDIDATE_K = 10  # 每路检索先粗召回这么多块，再融合排序
 RRF_K = 60        # Reciprocal Rank Fusion 常数，越大越弱化头部排名差异
