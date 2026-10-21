@@ -20,7 +20,9 @@ load_dotenv()
 LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 EMBED_MODEL = "BAAI/bge-large-zh-v1.5"
 RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
-BASE_URL = "https://api.siliconflow.cn/v1"
+# 国内默认走 .cn；海外部署（如 Render 美国节点）用环境变量 SILICONFLOW_BASE_URL
+# 指向国际域名 https://api.siliconflow.com/v1，海外直连 .cn 会被网关判为参数无效。
+BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
 TOP_K = 5
 CANDIDATE_K = 10  # 每路检索先粗召回这么多块，再融合排序
 RRF_K = 60        # Reciprocal Rank Fusion 常数，越大越弱化头部排名差异
@@ -54,7 +56,19 @@ class RAGEngine:
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
         """批量文字转向量。"""
-        resp = self._client.embeddings.create(model=EMBED_MODEL, input=texts)
+        try:
+            resp = self._client.embeddings.create(model=EMBED_MODEL, input=texts)
+        except Exception as e:
+            import sys
+            key = os.getenv("SILICONFLOW_API_KEY") or ""
+            print(
+                f"[EMBED ERROR] base_url={BASE_URL} model={EMBED_MODEL} n={len(texts)} "
+                f"len0={len(texts[0]) if texts else 0} key_prefix={key[:7]} "
+                f"key_len={len(key)} key_stripped={key == key.strip()} "
+                f"err={type(e).__name__}: {e}",
+                file=sys.stderr, flush=True,
+            )
+            raise
         return [item.embedding for item in sorted(resp.data, key=lambda x: x.index)]
 
     def index_pdf(self, pdf_path: str | Path) -> int:
@@ -155,6 +169,11 @@ class RAGEngine:
             },
             timeout=60,
         )
+        if resp.status_code != 200:
+            import sys
+            print(f"[RERANK ERROR] base_url={BASE_URL} model={RERANK_MODEL} "
+                  f"status={resp.status_code} body={resp.text[:500]}",
+                  file=sys.stderr, flush=True)
         resp.raise_for_status()
         results = resp.json()["results"]
         ranked = []

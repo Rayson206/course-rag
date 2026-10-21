@@ -8,13 +8,28 @@ import os
 import gradio as gr
 
 from course_rag.document_parser import PDF_PATH
-from course_rag.rag_engine import RAGEngine
+from course_rag.rag_engine import (
+    BASE_URL,
+    EMBED_MODEL,
+    LLM_MODEL,
+    RERANK_MODEL,
+    RAGEngine,
+)
 
+print(
+    f"[BOOT] base_url={BASE_URL} embed={EMBED_MODEL} rerank={RERANK_MODEL} "
+    f"llm={LLM_MODEL} key_set={bool(os.getenv('SILICONFLOW_API_KEY'))}",
+    flush=True,
+)
 engine = RAGEngine()
 
 # 启动时确保示例讲义已索引，开箱即用
 if engine.collection.count() == 0:
+    print("[BOOT] collection empty, building index from built-in PDF ...", flush=True)
     engine.index_pdf(PDF_PATH)
+    print(f"[BOOT] index built, chunks={engine.collection.count()}", flush=True)
+else:
+    print(f"[BOOT] reuse existing index, chunks={engine.collection.count()}", flush=True)
 
 NO_ANSWER = "📚 讲义中没有找到相关内容，换个关键词试试，或确认该内容是否在你上传的资料里。"
 
