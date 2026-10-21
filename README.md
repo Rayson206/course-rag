@@ -66,15 +66,28 @@ flowchart LR
 ### 方式一：Docker（推荐，一条命令）
 
 ```bash
-# 构建镜像
+# 构建镜像（海外网络 / 标准方式）
 docker build -t course-rag:local .
 
-# 运行（密钥在运行时通过环境变量注入，不打进镜像）
+# 运行（密钥在运行时通过环境变量注入，不打进镜像；首次启动自动索引 data/ 下的 PDF）
 docker run -d --name course-rag -p 8000:8000 --env-file .env course-rag:local
 
-# 容器首次启动会自动索引 data/ 目录下的 PDF，约 20 秒后访问：
-#   http://localhost:8000/docs  （在线接口文档）
+# 约 20 秒后访问：http://localhost:8000/docs （在线接口文档）
 ```
+
+> 📌 **国内网络（拉取 Docker Hub / ghcr.io 超时）**：改用仓库内的 `Dockerfile.cn`——除基础镜像走 DaoCloud 公开代理外，依赖与逻辑与 `Dockerfile` 完全一致；Python 依赖仍走 `uv.lock` 锁定的国内源：
+>
+> ```bash
+> # 国内网络构建（只需把 build 换成这一行）
+> docker build -f Dockerfile.cn -t course-rag:local .
+>
+> # 数据持久化（可选，推荐）：挂载命名卷保存索引与资料，重建容器不丢
+> docker run -d --name course-rag -p 8000:8000 \
+>   -v course-rag-db:/app/chroma_db -v course-rag-data:/app/data \
+>   --env-file .env course-rag:local
+> ```
+>
+> 常用容器命令：`docker logs -f course-rag`（看日志）、`docker stop/start course-rag`（停/启）、`docker rm -f course-rag`（删除容器）。
 
 ### 方式二：本地运行（uv 管理环境）
 
@@ -148,6 +161,7 @@ course-rag/
 │   └── benchmark.md       # 评测结果与错误分析
 ├── data/                  # 示例讲义（7 页 PDF）
 ├── Dockerfile             # 容器化（分层缓存、健康检查、数据卷）
+├── Dockerfile.cn          # 国内网络构建版（基础镜像走 DaoCloud 代理）
 └── pyproject.toml
 ```
 
