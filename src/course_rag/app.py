@@ -31,13 +31,6 @@ if engine.collection.count() == 0:
 else:
     print(f"[BOOT] reuse existing index, chunks={engine.collection.count()}", flush=True)
 
-# 诊断：模拟查询时的“单条” embedding（建索引走的是批量，二者要分开验证）
-try:
-    engine._embed(["单条查询向量化自检"])
-    print("[BOOT] single-query embedding self-check OK", flush=True)
-except Exception:
-    print("[BOOT] single-query embedding self-check FAILED (see [EMBED ERROR] above)", flush=True)
-
 NO_ANSWER = "📚 讲义中没有找到相关内容，换个关键词试试，或确认该内容是否在你上传的资料里。"
 
 
@@ -63,10 +56,31 @@ def format_sources(hits: list[dict]) -> str:
     return "\n\n---\n📖 **参考来源**（相关度越高越匹配）：\n" + "\n".join(lines)
 
 
+def _message_text(content) -> str:
+    """从 Gradio messages 的 content 提取纯文本。
+
+    Gradio 6.x 可能给纯字符串，也可能给 OpenAI 风格的分段列表
+    [{"type": "text", "text": "..."}]，两种都要兼容，否则会把 list/dict
+    直接送进 embedding，云端报 400(20015 参数无效)。
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for seg in content:
+            parts.append(seg.get("text", "") if isinstance(seg, dict) else str(seg))
+        return "".join(parts)
+    return str(content)
+
+
 def respond(history: list[dict]):
     """history 为 messages 格式，最后一条是用户本轮提问。"""
-    question = history[-1]["content"]
-    prior = history[:-1][-6:]  # 最多携带最近 3 轮上下文
+    question = _message_text(history[-1]["content"])
+    # 统一成纯文本 content 再喂给 LLM，最多携带最近 3 轮上下文
+    prior = [
+        {"role": m["role"], "content": _message_text(m["content"])}
+        for m in history[:-1][-6:]
+    ]
     hits = engine.search(question)
 
     if engine.should_reject(hits):

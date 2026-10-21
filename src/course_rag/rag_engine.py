@@ -61,32 +61,13 @@ class RAGEngine:
         try:
             resp = self._client.embeddings.create(model=EMBED_MODEL, input=texts)
         except Exception as e:
-            import sys, json
-            import httpx as _httpx
-            key = os.getenv("SILICONFLOW_API_KEY") or ""
+            import sys
             print(
                 f"[EMBED ERROR] base_url={BASE_URL} model={EMBED_MODEL} n={len(texts)} "
-                f"lens={[len(t) if isinstance(t, str) else 'NONSTR' for t in texts]} "
                 f"repr0={repr(texts[0])[:120] if texts else 'EMPTY'} "
-                f"key_prefix={key[:7]} key_len={len(key)} key_stripped={key == key.strip()} "
                 f"err={type(e).__name__}: {e}",
                 file=sys.stderr, flush=True,
             )
-            # 用原生 httpx 按同样参数重发一次，剥离 SDK 因素，看真实请求/响应
-            try:
-                body = {"model": EMBED_MODEL, "input": [str(t) for t in texts]}
-                print(f"[EMBED DEBUG] raw request body={json.dumps(body, ensure_ascii=False)[:600]}",
-                      file=sys.stderr, flush=True)
-                r = _httpx.post(
-                    f"{BASE_URL}/embeddings",
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json=body, timeout=30,
-                )
-                print(f"[EMBED DEBUG] httpx retry status={r.status_code} body={r.text[:600]}",
-                      file=sys.stderr, flush=True)
-            except Exception as e2:
-                print(f"[EMBED DEBUG] httpx retry threw: {type(e2).__name__}: {e2}",
-                      file=sys.stderr, flush=True)
             raise
         return [item.embedding for item in sorted(resp.data, key=lambda x: x.index)]
 
