@@ -31,6 +31,13 @@ if engine.collection.count() == 0:
 else:
     print(f"[BOOT] reuse existing index, chunks={engine.collection.count()}", flush=True)
 
+# 诊断：模拟查询时的“单条” embedding（建索引走的是批量，二者要分开验证）
+try:
+    engine._embed(["单条查询向量化自检"])
+    print("[BOOT] single-query embedding self-check OK", flush=True)
+except Exception:
+    print("[BOOT] single-query embedding self-check FAILED (see [EMBED ERROR] above)", flush=True)
+
 NO_ANSWER = "📚 讲义中没有找到相关内容，换个关键词试试，或确认该内容是否在你上传的资料里。"
 
 
